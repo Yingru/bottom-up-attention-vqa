@@ -9,6 +9,8 @@ import base_model
 from train import train
 import utils
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print("You are using device: %s" % device)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -35,10 +37,10 @@ if __name__ == '__main__':
     batch_size = args.batch_size
 
     constructor = 'build_%s' % args.model
-    model = getattr(base_model, constructor)(train_dset, args.num_hid).cuda()
+    model = getattr(base_model, constructor)(train_dset, args.num_hid).to(device)
     model.w_emb.init_embedding('data/glove6b_init_300d.npy')
 
-    model = nn.DataParallel(model).cuda()
+    model = nn.DataParallel(model).to(device)
 
     train_loader = DataLoader(train_dset, batch_size, shuffle=True, num_workers=1)
     eval_loader =  DataLoader(eval_dset, batch_size, shuffle=True, num_workers=1)

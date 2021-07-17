@@ -5,6 +5,8 @@ import torch.nn as nn
 import utils
 from torch.autograd import Variable
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print("You are using device: %s" % device)
 
 def instance_bce_with_logits(logits, labels):
     assert logits.dim() == 2
@@ -16,7 +18,7 @@ def instance_bce_with_logits(logits, labels):
 
 def compute_score_with_logits(logits, labels):
     logits = torch.max(logits, 1)[1].data # argmax
-    one_hots = torch.zeros(*labels.size()).cuda()
+    one_hots = torch.zeros(*labels.size()).to(device)
     one_hots.scatter_(1, logits.view(-1, 1), 1)
     scores = (one_hots * labels)
     return scores
@@ -34,20 +36,20 @@ def train(model, train_loader, eval_loader, num_epochs, output):
         t = time.time()
 
         for i, (v, b, q, a) in enumerate(train_loader):
-            v = Variable(v).cuda()
-            b = Variable(b).cuda()
-            q = Variable(q).cuda()
-            a = Variable(a).cuda()
+            v = Variable(v).to(device)
+            b = Variable(b).to(device)
+            q = Variable(q).to(device)
+            a = Variable(a).to(device)
 
             pred = model(v, b, q, a)
             loss = instance_bce_with_logits(pred, a)
             loss.backward()
-            nn.utils.clip_grad_norm(model.parameters(), 0.25)
+            nn.utils.clip_grad_norm_(model.parameters(), 0.25)
             optim.step()
             optim.zero_grad()
 
             batch_score = compute_score_with_logits(pred, a.data).sum()
-            total_loss += loss.data[0] * v.size(0)
+            total_loss += loss.data * v.size(0)
             train_score += batch_score
 
         total_loss /= len(train_loader.dataset)
@@ -70,12 +72,15 @@ def evaluate(model, dataloader):
     score = 0
     upper_bound = 0
     num_data = 0
+
     for v, b, q, a in iter(dataloader):
-        v = Variable(v, volatile=True).cuda()
-        b = Variable(b, volatile=True).cuda()
-        q = Variable(q, volatile=True).cuda()
-        pred = model(v, b, q, None)
-        batch_score = compute_score_with_logits(pred, a.cuda()).sum()
+        with torch.no_grad():
+            v = Variable(v).to(device)
+            b = Variable(b).to(device)
+            q = Variable(q).to(device)
+            pred = model(v, b, q, None)
+
+        batch_score = compute_score_with_logits(pred, a.to(device)).sum()
         score += batch_score
         upper_bound += (a.max(1)[0]).sum()
         num_data += pred.size(0)
